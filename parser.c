@@ -33,6 +33,21 @@ instruction *parse(lexeme *list, int printTable, int printCode)
 	table = malloc(sizeof(symbol) * MAX_SYMBOL_COUNT);
 	tIndex = 0;
 	
+	/// Gets index of last lexeme in list
+	int tempIndex = -1;
+	while (list[++tempIndex].type != -1)
+		continue;
+	int lastIndex = tempIndex - 1;
+	
+	/// If the last lexeme isn't a periodsym, error
+	if (list[lastIndex].type != periodsym)
+	{
+		printparseerror(1);
+		return NULL;
+	}
+	
+	
+	
 	// print off table and code
 	if (printTable)
 		printsymboltable();
