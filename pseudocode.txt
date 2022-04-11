@@ -1,0 +1,407 @@
+code
+codeidx
+table
+tableidx
+list
+listidx
+level
+registercounter
+
+parse
+	set up global variables
+	registercounter = -1
+	emit JMP (7, 0, 0, M = 0)
+	addtosymboltable(3, "main", 0, 0, 0, 0)
+	level = -1
+	block()
+	check for error 1
+	emit HLT (11, 0, 0, 0)
+	code[0].m = table[0].addr
+	for i = 0, i < codeidx, i++
+		if code[i].opcode == 5
+			code[i].m = table[code[i].m].addr
+	print table and or code
+	return code
+block
+	level++
+	procedureidx = tableidx - 1
+	x = var-declaration()
+	procedure-declaration()
+	table[procedureidx].addr = codeidx
+	emit INC (6, 0, 0, M = x)
+	statement()
+	mark()
+	level--
+var-declaration
+	memorysize = 3
+	symbolname
+	arraysize
+	if list[listidx] is varsym
+		do
+			listidx++
+			if list[listidx] is not identsym 
+				error 2
+			if multipledeclarationcheck(list[listidx].name) != -1
+				error 3
+			symbolname = list[listidx].name
+			listidx++
+			if list[listidx] is lbracketsym
+				listidx++
+				if list[listidx] is not numbersym || list[listidx].value == 0
+					error 4
+				arraysize = list[listidx].value
+				listidx++
+				if list[listidx] is multsym, divsym, modsym, addsym, subsym
+					error 4
+				else if list[listidx] is not rbracket
+					error 5
+				listidx++
+				addtosymboltable(2, symbolname, arraysize, level, memorysize, 0)
+				memorysize += arraysize
+			else
+				addtosymboltable(1, symbolname, 0, level, memorysize, 0)
+				memorysize++
+		while list[listidx] is commasym
+		if list[listidx] is identsym
+			error 6
+		else if list[listidx] is not semicolonsym
+			error 7
+		listidx++
+		return memorysize
+	else
+		return memorysize
+procedure-declaration
+	symbolname
+	while list[listidx] is proceduresym
+		listidx++
+		if list[listidx] is not identsym
+			error 2
+		else if multipledeclarationcheck(list[listidx].name) != -1
+			error 3
+		symbolname = list[listidx].name
+		listidx++
+		if list[listidx] is not semicolonsym
+			error 8
+		listidx++
+		addtosymboltable(3, symbolname, 0, level, 0, 0)
+		block()
+		if list[listidx] is not semicolonsym
+			error 7
+		listidx++
+		emit RET (2, 0, 0, 0)
+statement
+	symbolname
+	symidx
+	arrayidxreg
+	varlocreg
+	jpcidx
+	jmpidx
+	loopidx
+	assignment
+		symbolname = list[listidx].name
+		listidx++
+		if list[listidx] is lbracketsym
+			listidx++
+			symidx = findsymbol(symbolname, 2)
+			if symidx == -1
+				if findsymbol(symbolname, 1) != -1
+					error 11
+				else if findsymbol(symbolname, 3) != -1
+					error 9
+				else
+					error 10
+			expression()
+			arrayidxreg = registercounter
+			if list[listidx] is not rbracketsym
+				error 5
+			listidx++
+			if list[listidx] is not assignsym
+				error 13
+			listidx++
+			expression()
+			registercounter++
+			if registercounter >= 10
+				error 14
+			emit LIT (1, R = registercounter, 0, M = table[symidx].addr)
+			emit ADD (13, R = arrayidxreg, L = arrayidxreg, registercounter)
+			registercounter--
+			emit STO (4, R = registercounter, L = level - table[symidx].level, M = arrayidxreg)
+			registercounter -= 2
+		else
+			symidx = findsymbol(symbolname, 1)
+			if symidx == -1
+				if findsymbol(symbolname, 2) != -1
+					error 12
+				else if findsymbol(symbolname, 3) != -1
+					error 9
+				else
+					error 10
+			registercounter++
+			if registercounter >= 10
+				error 14
+			emit LIT(1, R = registercounter, 0, M = table[symidx].addr)
+			varlocreg = registercounter
+			if list[listidx] is not assignsym
+				error 13
+			listidx++
+			expression()
+			emit STO (4, R = registercounter, L = level - table[symidx].level, M = varlocreg)
+			registercounter -= 2
+	call
+		listidx++
+		if list[listidx] is not identsym
+			error 15
+		symidx = findsymbol(list[listidx].name, 3)
+		if symidx == -1
+			if findsymbol(list[listidx].name, 1) != -1 || findsymbol(list[listidx].name, 2) != -1
+				error 15
+			else
+				error 10
+		emit CAL (5, 0, L = level - table[symidx].level, M = symidx)
+		listidx++
+	begin-end
+		do
+			listidx++
+			statement()
+		while list[listidx] is semicolonsym
+		if list[listidx] is not endsym
+			if list[listidx] is identsym, callsym, beginsym, ifsym, dosym, readsym, or writesym
+				error 16
+			else
+				error 17
+		listidx++
+	if
+		listidx++
+		condition()
+		jpcidx = codeidx
+		emit JPC (8, R = registercounter, 0, M = 0)
+		registercounter--
+		if list[listidx] is not questionsym
+			error 18
+		listidx++
+		statement()
+		if list[listidx] is colonsym
+			listidx++
+			jmpidx = codeidx
+			emit JMP (7, 0, 0, M = 0)
+			code[jpcidx].m = codeidx
+			statement()
+			code[jmpidx].m = codeidx
+		else
+			code[jpcidx].m = codeidx
+	do-while
+		listidx++
+		loopidx = codeidx
+		statement()
+		if list[listidx] is not whilesym
+			error 19
+		listidx++
+		condition()
+		registercounter++
+		if registercounter >= 10
+			error 14
+		emit LIT(1, R = registercounter, 0, M = 0)
+		emit EQL (18, R = registercounter - 1, L = registercounter - 1, M = registercounter)
+		registercounter--
+		emit JPC (8, R = registercounter, 0, M = loopidx)
+		registercounter--
+	read
+		listidx++
+		if list[listidx] is not identsym
+			error 20
+		symbolname = list[listidx].name
+		listidx++
+		if list[listidx] is lbracketsym
+			listidx++
+			symidx = findsymbol(symbolname, 2)
+			if symidx == -1
+				if findsymbol(symbolname, 1) != -1
+					error 11
+				else if findsymbol(symbolname, 3) != -1
+					error 9
+				else
+					error 10
+			expression()
+			arrayidxreg = registercounter
+			if list[listidx] is not rbracketsym
+				error 5
+			listidx++
+			registercounter++
+			if registercounter >= 10
+				error 14
+			emit RED (10, R = registercounter, 0, 0)
+			registercounter++
+			if registercounter >= 10
+				error 14
+			emit LIT (1, R = registercounter, 0, table[symidx].addr)
+			emit ADD (13, R = arrayidxreg, L = arrayidxreg, M = registercounter)
+			registercounter--
+			emit STO (4, R = registercounter, L = level - table[symidx].level, M = arrayidxreg)
+			registercounter -= 2
+		else
+			symidx = findsymbol(symbolname, 1)
+			if symidx == -1
+				if findsymbol(symbolname, 2) != -1
+					error 12
+				else if findsymbol(symbolname, 3) != -1
+					error 9
+				else
+					error 10
+			registercounter++
+			if registercounter >= 10
+				error 14
+			emit LIT (1, R = registercounter, 0, table[symidx].addr)
+			varlocreg = registercounter
+			registercounter++
+			if registercounter >= 10
+				error 14
+			emit RED (10, R = registercounter, 0, 0)
+			emit STO (4, R = registercounter, L = level - table[symidx].level, M = varlocreg)
+			registercounter -= 2
+	write
+		listidx++
+		expression()
+		emit WRT (9, R = registercounter, 0, 0)
+		registercounter--
+condition
+	expression()
+	if list[listidx] is eqlsym
+		listidx++
+		expression()
+		emit EQL (18, R = registercounter - 1, L = registercounter - 1, M = registercounter)
+		registercounter--
+	else if list[listidx] is neqsym
+		listidx++
+		expression()
+		emit NEQ (19, R = registercounter - 1, L = registercounter - 1, M = registercounter)
+		registercounter--
+	else if list[listidx] is lsssym
+		listidx++
+		expression()
+		emit LSS (20, R = registercounter - 1, L = registercounter - 1, M = registercounter)
+		registercounter--
+	else if list[listidx] is leqsym
+		listidx++
+		expression()
+		emit LEQ (21, R = registercounter - 1, L = registercounter - 1, M = registercounter)
+		registercounter--
+	else if list[listidx] is gtrsym
+		listidx++
+		expression()
+		emit GTR (22, R = registercounter - 1, L = registercounter - 1, M = registercounter)
+		registercounter--
+	else if list[listidx] is geqsym
+		listidx++
+		expression()
+		emit GEQ (23, R = registercounter - 1, L = registercounter - 1, M = registercounter)
+		registercounter--
+	else
+		error 21
+expression
+	if list[listidx] is subsym
+		listidx++
+		term()
+		emit NEG (12, R = registercounter, 0, M = registercounter)
+		while list[listidx] is addsym or subsym
+			if list[listidx] is addsym
+				listidx++
+				term()
+				emit ADD (13, R = registercounter - 1, L = registercounter - 1, M = registercounter)
+				registercounter--
+			else
+				listidx++
+				term()
+				emit SUB (14, R = registercounter - 1, L = registercounter - 1, M = registercounter)
+				registercounter--
+	else
+		term()
+		while list[listidx] is addsym or subsym
+			if list[listidx] is addsym
+				listidx++
+				term()
+				emit ADD (13, R = registercounter - 1, L = registercounter - 1, M = registercounter)
+				registercounter--
+			else
+				listidx++
+				term()
+				emit SUB (14, R = registercounter - 1, L = registercounter - 1, M = registercounter)
+				registercounter--
+	if list[listidx] is lparenthesissym, identsym, or numbersym
+		error 22
+term
+	factor()
+	while list[listidx] is multsym, divsym, or modsym
+		if list[listidx] is multsym
+			listidx++
+			factor()
+			emit MUL (15, R = registercounter - 1, L = registercounter - 1, M = registercounter)
+			registercounter--
+		else if list[listidx] is divsym
+			listidx++
+			factor()
+			emit DIV (16, R = registercounter - 1, L = registercounter - 1, M = registercounter)
+			registercounter--
+		else
+			listidx++
+			factor()
+			emit MOD (17, R = registercounter - 1, L = registercounter - 1, M = registercounter)
+			registercounter--
+factor
+	symbolname
+	symidx
+	arrayidxreg
+	varlocreg
+	if list[listidx] is identsym
+		symbolname = list[listidx].name
+		listidx++
+		if list[listidx] is lbracketsym
+			listidx++
+			symidx = findsymbol(symbolname, 2)
+			if symidx == -1
+				if findsymbol(symbolname, 1) != -1
+					error 11
+				else if findsymbol(symbolname, 3) != -1
+					error 9
+				else
+					error 10
+			expression()
+			arrayidxreg = registercounter
+			if list[listidx] is not rbracketsym
+				error 5
+			listidx++
+			registercounter++
+			if registercounter >= 10
+				error 14
+			emit LIT (1, R = registercounter, 0, M = table[symidx].addr)
+			emit ADD (13, R = arrayidxreg, L = arrayidxreg, M = registercounter)
+			registercounter--
+			emit LOD (3, R = registercounter, L = level - table[symidx].level, M = arrayidxreg)
+		else
+			symidx = findsymbol(symbolname, 1)
+			if symidx == -1
+				if findsymbol(symbolname, 2) != -1
+					error 12
+				else if findsymbol(symbolname, 3) != -1
+					error 9
+				else
+					error 10
+			registercounter++
+			if registercounter >= 10
+				error 14
+			emit LIT (1, R = registercounter, 0, M = table[symidx].addr)
+			varlocreg = registercounter
+			emit LOD (3, R = registercounter, L = level - table[symidx].level, M = varlocreg)
+	else if list[listidx] is numbersym
+		registercounter++
+		if registercounter >= 10
+			error 14
+		emit LIT (1, R = registercounter, 0, M = list[listidx].value)
+		listidx++
+	else if list[listidx] is lparenthesissym
+		listidx++
+		expression()
+		if list[listidx] is not rparenthesissym
+			error 23
+		listidx++
+	else
+		error 24
