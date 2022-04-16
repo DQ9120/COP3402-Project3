@@ -6,14 +6,20 @@
 #define MAX_CODE_LENGTH 200
 #define MAX_SYMBOL_COUNT 50
 #define MAX_REG_COUNT 10
+#define ERROR_CODE -100
 
 // generated code
 instruction *code;
-int cIndex;
+int codeIdx; // (codeIdx)
 
 // symbol table
 symbol *table;
 int tIndex;
+lexeme *list;
+int listIndex;
+int level;
+int err;
+int registercounter;
 
 
 void emit(int opname, int reg, int level, int mvalue);
@@ -32,31 +38,823 @@ instruction *parse(lexeme *list, int printTable, int printCode)
 	cIndex = 0;
 	table = malloc(sizeof(symbol) * MAX_SYMBOL_COUNT);
 	tIndex = 0;
-	
-	/// Gets index of last lexeme in list
-	int tempIndex = -1;
-	while (list[++tempIndex].type != -1)
-		continue;
-	int lastIndex = tempIndex - 1;
-	
-	/// If the last lexeme isn't a periodsym, error
-	if (list[lastIndex].type != periodsym)
+
+	// DO STUFF HERE (PROGRAM)
+	int isERROR;
+	registercounter = -1;
+	emit(7, 0, 0, M=0);
+	addToSymbolTable(3, "main", 0, 0, 0, 0);
+	level = -1;
+	isERROR = block();
+	if (isERROR == ERROR_CODE)
+	{
+		printparseerror(err);
+		return NULL;
+	}
+	// check for error1
+	if (list[listIndex].type != periodsym)
 	{
 		printparseerror(1);
 		return NULL;
 	}
-	
-	
-	
+	emit(11, 0, 0, 0);
+	code[0].m = table[0].addr;
+	for (int i = 0; i < codeIdx; i++)
+		if (code[i].opcode == 5)
+			code[i].m = table[code[i].m].addr;
+
 	// print off table and code
 	if (printTable)
 		printsymboltable();
 	if (printCode)
 		printassemblycode();
-	
+
 	// mark the end of the code
 	code[cIndex].opcode = -1;
 	return code;
+}
+
+int block()
+{
+	int isERROR;
+	level++;
+	prodecureindex = tIndex = 1;
+
+	int x = varDec();
+	if (x == ERROR_CODE)
+		return ERROR_CODE;
+
+	isERROR = procDec();
+	if (isERROR == ERROR_CODE)
+		return ERROR_CODE;
+
+	table[prodecureindex].addr = codeIdx;
+	emit(6, 0, 0, x);
+	isERROR = statement();
+	if (isERROR == ERROR_CODE)
+		return ERROR_CODE;
+
+	mark();
+	level--;
+	return 0;
+}
+
+int varDec()
+{
+	int memSize = 3;
+	char symbolName[12];
+	int arraySize = 0;
+  	if (list[listIndex].type == varsym)
+    {
+      do
+      {
+        listIndex++;
+        if (list[listIndex].type != identsym)
+        {
+            err = 2;
+            return ERROR_CODE;
+        }
+        if (multipledeclarationcheck(list[listIndex].name) != -1)
+        {
+            err = 3;
+            return ERROR_CODE;
+        }
+
+        strcpy(symbolName, list[listIndex].name);
+        listIndex++;
+        if (list[listIndex].type == lbracketsym)
+        {
+          listIndex++;
+          if (list[listIndex].type != numbersym || list[listIndex].value == 0)
+          {
+              err = 4;
+              return ERROR_CODE;
+          }
+
+          arraySize = list[listIndex].value;
+          listIndex++;
+          token_type tempy = list[listIndex].type;
+          if (tempy == multsym || tempy == divsym || tempy == modsym || tempy == addsym || tempy == subsym)
+          {
+              err = 4;
+              return ERROR_CODE;
+          }
+          else if (tempy != rbracketsym)
+          {
+              err = 5;
+              return ERROR_CODE;
+          }
+
+          listIndex++;
+          addToSymbolTable(2, symbolName, arraySize, level, memSize, 0);
+          memSize += arraySize;
+      	}
+
+        else
+        {
+            addToSymbolTable(1, symbolName, 0, level, memSize, 0);
+            memSize++;
+        }
+      }
+      while (list[listIndex].type == commasym);
+
+      if (list[listIndex].type == identsym)
+      {
+          err = 6;
+          return ERROR_CODE;
+      }
+      else if (list[listIndex].type == semicolonsym)
+      {
+          err = 7;
+          return ERROR_CODE;
+      }
+      listIndex++;
+    }
+
+    else
+    	return memSize;
+}
+
+int procDec()
+{
+	int isERROR;
+	char *symbolname[16];
+	while (list[listIndex].type == procsym)
+	{
+		listIndex++;
+		if (list[listIndex].type != identsym)
+		{
+			err = 2;
+			return ERROR_CODE;
+		}
+		else if (multipledeclarationcheck(list[listIndex].name) != -1)
+		{
+			err = 3;
+			return ERROR_CODE;
+		}
+		strcpy(symbolname, list[listIndex].name);
+		listIndex++;
+		if (list[listIndex].type != semicolonsym)
+		{
+			err = 8;
+			return ERROR_CODE;
+		}
+		listIndex++;
+		addToSymbolTable(3, symbolname, 0, level, 0, 0);
+		isERROR = block();
+		if (isERROR == ERROR_CODE)
+			return ERROR_CODE;
+
+		if (list[listIndex].type != semicolonsym)
+		{
+			err = 7;
+			return ERROR_CODE;
+		}
+		listIndex++;
+		emit(2, 0, 0, 0);
+	}
+	return 0;
+}
+
+int statement()
+{
+	char symbolname[16];
+	int symidx;
+	int arrayidxreg;
+	int varlocreg;
+ 	int jpcidx;
+	int jmpidx;
+	int loopidx;
+	int isERROR;
+
+	// assignment =================================================
+	if (list[listIndex].type == assignsym)
+	{
+		strcpy(symbolname, list[listIndex].name);
+		listIndex++;
+		if (list[listIndex].type == lbracketsym)
+		{
+			listIndex++;
+			symidx = findsymbol(symbolname, 2);
+			if (symidx == -1)
+			{
+				if (findsymbol(symbolname, 1) != -1)
+				{
+					err = 11;
+					return ERROR_CODE;
+				}
+				else if (findsymbol(symbolname, 3) != -1)
+				{
+					err = 9;
+					return ERROR_CODE;
+				}
+				else
+				{
+					err = 10;
+					return ERROR_CODE;
+				}
+			}
+			isERROR = expression();
+			if (isERROR == ERROR_CODE)
+				return ERROR_CODE;
+
+			arrayidxreg = registercounter;
+			if (list[listIndex].type != rbracketsym)
+			{
+				err = 5;
+				return ERROR_CODE;
+			}
+			listIndex++;
+			if (list[listIndex].type != assignsym)
+			{
+				err = 13;
+				return ERROR_CODE;
+			}
+			listIndex++;
+			isERROR = expression();
+			if (isERROR == ERROR_CODE)
+				return ERROR_CODE;
+			registercounter++
+			if (registercounter >= 10)
+			{
+				err = 14;
+				return ERROR_CODE;
+			}
+			emit(1, registercounter, 0, table[symidx].addr);
+			emit(13, arrayidxreg, arrayidxreg, registercounter);
+			registercounter--;
+			emit(4, registercounter, level - table[symidx].level, arrayidxreg);
+			registercounter -= 2;
+		}
+		else
+		{
+			symidx = findsymbol(symbolname, 1);
+			if (symidx == -1)
+			{
+				if (findsymbol(symbolname, 2) != -1)
+				{
+					err = 12;
+					return ERROR_CODE;
+				}
+				else if (findsymbol(symbolname, 3) != -1)
+				{
+					err = 9;
+					return ERROR_CODE;
+				}
+				else
+				{
+					err = 10;
+					return ERROR_CODE;
+				}
+			}
+			registercounter++;
+			if (registercounter >= 10)
+			{
+				err = 14;
+				return ERROR_CODE;
+			}
+			emit(1, registercounter, 0, table[symidx].addr);
+			varlocreg = registercounter;
+			if (list[listIndex].type != assignsym)
+			{
+				err = 13;
+				return ERROR_CODE;
+			}
+			listIndex++
+			isERROR = expression();
+			if (isERROR == ERROR_CODE)
+				return ERROR_CODE;
+			emit(4, registercounter, level - table[symidx].level, varlocreg)
+			registercounter -= 2;
+		}
+	}
+
+	// call ===========================================================
+  if(list[listIndex].type == callsym)
+  {
+    listIndex++;
+    if (list[listIndex].type != identsym)
+    {
+      err = 15;
+      return ERROR_CODE;
+    }
+    symidx = findsymbol(list[listIndex].name, 3);
+    if (symidx == -1)
+    {
+      if (findsymbol(list[listIndex].name, 1) != -1 || findsymbol(list[listIndex].name, 2) != -1)
+      {
+        err = 15;
+        return ERROR_CODE;
+      }
+      else
+      {
+        err = 10;
+        return ERROR_CODE;
+      }
+    }
+    emit(5, 0, level - table[symidx].level, symidx);
+    listIndex++;
+   }
+
+	// begin-end ======================================================
+	if (list[listIndex].type == beginsym)
+	{
+		do
+		{
+			listIndex++;
+			isERROR = statement();
+			if (isERROR == ERROR_CODE)
+				return ERROR_CODE;
+		}
+		while (list[listIndex].type == semicolonsym)
+		if (list[listIndex].type != endsym)
+		{
+			token_type tempy = list[listIndex].type;
+			if (tempy == identsym || tempy == callsym || tempy == beginsym || tempy == ifsym ||
+				tempy == dosym || tempy == readsym || tempy == writesym)
+				{
+					err = 16;
+					return ERROR_CODE;
+				}
+			else
+			{
+				err = 17;
+				return ERROR_CODE;
+			}
+		}
+		listIndex++;
+	}
+
+	//
+	// if =============================================================
+	if(list[listIndex].type == ifsym)
+	{
+		listIndex++;
+		isERROR = condition();
+		if (isERROR == ERROR_CODE)
+			return ERROR_CODE;
+		jpcidx = codeIdx;
+		emit(8, registercounter, 0, 0);
+		registercounter--;
+		if (list[listIndex].type != questionsym)
+		{
+			err = 18;
+			return ERROR_CODE;
+		}
+		listIndex++;
+		isERROR = statement();
+		if (isERROR == ERROR_CODE)
+			return ERROR_CODE;
+		if (list[listIndex].type == semicolonsym)
+		{
+			listIndex++;
+			jmpidx = codeIdx;
+			emit(7, 0, 0, 0);
+			code[jpcidx].m = codeIdx;
+			isERROR = statement();
+			if (isERROR == ERROR_CODE)
+				return ERROR_CODE;
+			code[jmpidx].m = codeIdx;
+		}
+		else
+		{
+			code[jpcidx].m = codeIdx;
+		}
+	}
+
+	// do-while =======================================================
+	if(list[listIndex].type == dosym)
+	{
+		listIndex++;
+		loopidx = codeIdx;
+		isERROR = statement();
+		if (isERROR == ERROR_CODE)
+			return ERROR_CODE;
+		if (list[listIndex].type != whilesym)
+		{
+			err = 19;
+			return ERROR_CODE;
+		}
+		listIndex++;
+		isERROR = condition();
+		if (isERROR == ERROR_CODE)
+			return ERROR_CODE;
+		registercounter++;
+
+		if (registercounter >= 10)
+		{
+		 err = 14;
+		 return ERROR_CODE;
+		}
+		emit (1, registercounter, 0, 0);
+		emit (18, registercounter - 1, registercounter - 1, registercounter);
+		registercounter--;
+		emti (8, registercounter, 0, loopidx);
+		registercounter--;
+	}
+
+	// read ===========================================================
+	if (list[listIndex].type == readsym)
+	{
+		listIndex++;
+		if (list[listIndex].type != identsym)
+		{
+			err = 20;
+			return ERROR_CODE;
+		}
+		strcpy(symbolname, list[listIndex].name);
+		listIndex++;
+		if (list[listIndex].type == lbracketsym)
+		{
+			listIndex++;
+			symidx = findsymbol(symbolname, 2);
+			if (symidx == -1)
+			{
+				if (findsymbol(symbolname, 1) != -1)
+				{
+					err = 11;
+					return ERROR_CODE;
+				}
+				else if (findsymbol(symbolname, 3) != -1)
+				{
+					err = 9;
+					return ERROR_CODE;
+				}
+				else
+				{
+					err = 10;
+					return ERROR_CODE;
+				}
+			}
+			isERROR = expression();
+			if (isERROR == ERROR_CODE)
+				return ERROR_CODE;
+			arrayidxreg = registercounter;
+			if (list[listIndex].type != rbracketsym)
+			{
+				err = 5;
+				return ERROR_CODE;
+			}
+			listIndex++;
+			registercounter++;
+			if (registercounter >= 10)
+			{
+				err = 14;
+				return ERROR_CODE;
+			}
+			emit(10, registercounter, 0, 0);
+			registercounter++;
+			if (registercounter >= 10)
+			{
+				err = 14;
+				return ERROR_CODE;
+			}
+			emit(1, registercounter, 0, table[symidx].addr);
+			emit(13, arrayidxreg, arrayidxreg, registercounter);
+			registercounter--;
+			emit (4, registercounter, level - table[symidx].level, arrayidxreg);
+			registercounter -= 2;
+		}
+		else
+		{
+			listIndex++;
+			symidx = findsymbol(symbolname, 1);
+			if (symidx == -1)
+			{
+				if (findsymbol(symbolname, 2) != -1)
+				{
+					err = 12;
+					return ERROR_CODE;
+				}
+				else if (findsymbol(symbolname, 3) != -1)
+				{
+					err = 9;
+					return ERROR_CODE;
+				}
+				else
+				{
+					err = 10;
+					return ERROR_CODE;
+				}
+			}
+			registercounter++
+			if (registercounter >= 10)
+			{
+				err = 14;
+				return ERROR_CODE;
+			}
+			emit(1, registercounter, 0, table[symidx].addr);
+			varlocreg = registercounter;
+			registercounter++;
+			if (registercounter >= 10)
+			{
+				err = 14;
+				return ERROR_CODE;
+			}
+			emit(10, registercounter, 0, 0);
+			emit(4, registercounter, level - table[symidx].level, varlocreg);
+			registercounter--;
+		}
+	}
+
+	// write ==========================================================
+	if(list[listIndex].type == writesym)
+	{
+		listIndex++;
+		isERROR = expression();
+		if (isERROR == ERROR_CODE)
+			return ERROR_CODE;
+		emit(9, registercounter, 0, 0);
+		registercounter--;
+	}
+
+}
+
+int condition()
+{
+	int isERROR;
+	isERROR = expression();
+	if (isERROR == ERROR_CODE)
+		return ERROR_CODE;
+	if (list[listIndex].type == eqlsym)
+	{
+		listIndex++;
+		isERROR = expression();
+		if (isERROR == ERROR_CODE)
+			return ERROR_CODE;
+		emit(18, registercounter - 1, registercounter - 1, registercounter);
+		registercounter--;
+	}
+	else if (list[listIndex].type == neqsym)
+	{
+		listIndex++;
+		isERROR = expression();
+		if (isERROR == ERROR_CODE)
+			return ERROR_CODE;
+		emit(19, registercounter - 1, registercounter - 1, registercounter);
+		registercounter--;
+	}
+	else if (list[listIndex].type == lsssym)
+	{
+		listIndex++;
+		isERROR = expression();
+		if (isERROR == ERROR_CODE)
+			return ERROR_CODE;
+		emit(20, registercounter - 1, registercounter - 1, registercounter);
+		registercounter--;
+	}
+	else if (list[listIndex].type == leqsym)
+	{
+		listIndex++;
+		isERROR = expression();
+		if (isERROR == ERROR_CODE)
+			return ERROR_CODE;
+		emit(21, registercounter - 1, registercounter - 1, registercounter);
+		registercounter--;
+	}
+	else if (list[listIndex].type == gtrsym)
+	{
+		listIndex++;
+		isERROR = expression();
+		if (isERROR == ERROR_CODE)
+			return ERROR_CODE;
+		emit(22, registercounter - 1, registercounter - 1, registercounter);
+		registercounter--;
+	}
+	else if (list[listIndex].type == geqsym)
+	{
+		listIndex++;
+		isERROR = expression();
+		if (isERROR == ERROR_CODE)
+			return ERROR_CODE;
+		emit(23, registercounter - 1, registercounter - 1, registercounter);
+		registercounter--;
+	}
+	else
+	{
+		err = 21;
+		return ERROR_CODE;
+	}
+	return 0
+}
+
+int expression()
+{
+	int isERROR;
+	if (list[listIndex].type == subsym)
+	{
+		listIndex++;
+		isERROR = term();
+		if (isERROR == ERROR_CODE)
+			return ERROR_CODE;
+		emit(12, registercounter, 0, registercounter);
+		while (list[listIndex].type == addsym || list[listIndex].type == subsym)
+		{
+			if (list[listIndex].type == addsym)
+			{
+				listIndex++;
+				isERROR = term();
+				if (isERROR == ERROR_CODE)
+					return ERROR_CODE;
+				emit(13, registercounter - 1, registercounter - 1, registercounter);
+				registercounter--;
+			}
+			else
+			{
+				listIndex++;
+				isERROR = term();
+				if (isERROR == ERROR_CODE)
+					return ERROR_CODE;
+				emit(14, registercounter - 1, registercounter - 1, registercounter);
+				registercounter--;
+			}
+		}
+	}
+	else
+	{
+		isERROR = term();
+		if (isERROR == ERROR_CODE)
+			return ERROR_CODE;
+	 	while (list[listIndex].type == addsym || list[listIndex].type == subsym)
+		{
+			if (list[listIndex].type == addsym)
+			{
+				listIndex++;
+				isERROR = term();
+				if (isERROR == ERROR_CODE)
+					return ERROR_CODE;
+				emit(13, registercounter - 1, registercounter - 1, registercounter);
+				registercounter--;
+			}
+			else
+			{
+				listIndex++;
+				isERROR = term();
+				if (isERROR == ERROR_CODE)
+					return ERROR_CODE;
+				emit(14, registercounter - 1, registercounter - 1, registercounter);
+				registercounter--;
+			}
+		}
+
+	 if (list[listIndex].type == lparentesissym || list[listIndex].type == identsym || list[listIndex].type == numbersym)
+	 {
+		err = 22;
+		return ERROR_CODE;
+	 }
+	return 0;
+}
+
+int term()
+{
+	int isERROR;
+	isERROR = factor();
+	if (isERROR == ERROR_CODE)
+		return ERROR_CODE;
+	while (list[listIndex].type == multsym || list[listIndex].type == divsym || list[listIndex].type == modsym)
+	{
+		if (list[listIndex].type == multsym)
+		{
+			listIndex++;
+			isERROR = factor();
+			if (isERROR == ERROR_CODE)
+				return ERROR_CODE;
+			emit(15, registercounter - 1,  registercounter - 1, registercounter);
+			registercounter--;
+		}
+		else if (list[listIndex].type == divsym)
+		{
+			listIndex++;
+			isERROR = factor();
+			if (isERROR == ERROR_CODE)
+				return ERROR_CODE;
+			emit(16, registercounter - 1,  registercounter - 1, registercounter);
+			registercounter--;
+		}
+		else
+		{
+			listIndex++;
+			isERROR = factor();
+			if (isERROR == ERROR_CODE)
+				return ERROR_CODE;
+			emit(17, registercounter - 1,  registercounter - 1, registercounter);
+			registercounter--;
+		}
+	}
+}
+
+int factor()
+{
+	char symbolname[16];
+	int arrayidxreg;
+	if (list[listIndex].type == identsym)
+	{
+		strcpy(symbolname, list[listIndex].name)
+		listIndex++;
+		if (list[listIndex].type == lbracketsym)
+		{
+			listIndex++;
+			int symidx = findsymbol(symbolname, 2)
+			if (symidx == -1)
+			{
+				if (findsymbol(symbolname, 1) != -1)
+				{
+					err = 11;
+					return ERROR_CODE;
+				}
+				else if (findsymbol(symbolname, 3) != -1)
+				{
+					err = 9;
+					return ERROR_CODE;
+				}
+				else
+				{
+					err = 10;
+					return ERROR_CODE;
+				}
+			}
+			isERROR = expression();
+			if (isERROR == ERROR_CODE)
+				return ERROR_CODE;
+			arrayidxreg = registercounter;
+			if (list[listIndex].type != rbracketsym)
+			{
+				err = 5;
+				return ERROR_CODE;
+			}
+			listIndex++;
+			registercounter++;
+			if (registercounter >= 10)
+			{
+				err = 14;
+				return ERROR_CODE;
+			}
+			emit(1, registercounter, 0, table[symidx].addr);
+			emit(13, arrayidxreg, arrayidxreg, registercounter);
+			registercounter--;
+			emit(3, registercounter, level - table[symidx].level, arrayidxreg);
+		}
+		else
+		{
+			symidx = findsymbol(symbolname, 1);
+			if (symidx == -1)
+			{
+				if (findsymbol(symbolname, 2) != -1)
+				{
+					err = 12;
+					return ERROR_CODE;
+				}
+				else if (findsymbol(symbolname, 3) != -1)
+				{
+					err = 9;
+					return ERROR_CODE;
+				}
+				else
+				{
+					err = 10;
+					return ERROR_CODE;
+				}
+			}
+			registercounter++;
+			if (registercounter >= 10)
+			{
+				err = 14;
+				return ERROR_CODE;
+			}
+			emit(1, registercounter, 0, table[symidx].addr);
+			varlocreg = registercounter;
+			emit(3, registercounter, level - table[symidx].level, varlocreg);
+		}
+	}
+	else if (list[listIndex].type == numbersym)
+	{
+		registercounter++
+		if (registercounter >= 10)
+		{
+			err = 14;
+			return ERROR_CODE;
+		}
+		emit(1, registercounter, 0, list[listIndex].value);
+		listIndex++;
+	}
+	else if (list[listIndex].type == lparenthesissym)
+	{
+		listIndex++;
+		isERROR = expression();
+		if (isERROR == ERROR_CODE)
+			return ERROR_CODE;
+		if (list[listIndex].type != rprarenthesissym)
+		{
+			err = 23;
+			return ERROR_CODE;
+		}
+		listIndex++;
+	}
+	else
+	{
+		err = 24;
+		return ERROR_CODE;
+	}
 }
 
 void emit(int opname, int reg, int level, int mvalue)
@@ -200,7 +998,7 @@ void printparseerror(int err_code)
 			printf("Implementation Error: unrecognized error code\n");
 			break;
 	}
-	
+
 	free(code);
 	free(table);
 }
@@ -212,8 +1010,8 @@ void printsymboltable()
 	printf("Kind | Name        | Size | Level | Address | Mark\n");
 	printf("---------------------------------------------------\n");
 	for (i = 0; i < tIndex; i++)
-		printf("%4d | %11s | %5d | %4d | %5d | %5d\n", table[i].kind, table[i].name, table[i].size, table[i].level, table[i].addr, table[i].mark); 
-	
+		printf("%4d | %11s | %5d | %4d | %5d | %5d\n", table[i].kind, table[i].name, table[i].size, table[i].level, table[i].addr, table[i].mark);
+
 	free(table);
 	table = NULL;
 }
@@ -303,7 +1101,7 @@ void printassemblycode()
 		}
 		printf("%d\t%d\t%d\n", code[i].r, code[i].l, code[i].m);
 	}
-	
+
 	if (table != NULL)
 		free(table);
 }
