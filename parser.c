@@ -41,8 +41,7 @@ void printassemblycode();
 
 instruction *parse(lexeme *list, int printTable, int printCode)
 {
-  //printf("PARSE\n");
-  //fflush(stdout);
+
 	// set up program variables
 	code = malloc(sizeof(instruction) * MAX_CODE_LENGTH);
 	codeIdx = 0;
@@ -56,56 +55,37 @@ instruction *parse(lexeme *list, int printTable, int printCode)
 	addToSymbolTable(3, "main", 0, 0, 0, 0);
 	level = -1;
 	isERROR = block();
-  //printf("MAIN BLOCK CALL FINISHED\n");
-  //fflush(stdout);
 	if (isERROR == ERROR_CODE)
 	{
-    //printf("ERROR\n");
-    //fflush(stdout);
 		printparseerror(err);
 		return NULL;
 	}
 	// check for error1
 	if (list[listIndex].type != periodsym)
 	{
-    //printf("NO PERIOD FOUND\n");
-    //fflush(stdout);
 		printparseerror(1);
 		return NULL;
 	}
-  //printf("PERIOD FOUND\n");
-  //fflush(stdout);
 	emit(11, 0, 0, 0); // HLT
 	code[0].m = table[0].addr;
 	for (int i = 0; i < codeIdx; i++)
 		if (code[i].opcode == 5)
 			code[i].m = table[code[i].m].addr;
-  
-  //printf("LOOP DONE\n");
-  //fflush(stdout);
 
 	// print off table and code
 	if (printTable)
 		printsymboltable();
 	if (printCode)
 		printassemblycode();
-   
-  //printf("TABLE PRINTED\n");
-  //fflush(stdout);
 
 	// mark the end of the code
 	code[codeIdx].opcode = -1;
- 
-  //printf("Code Index: %d\n", codeIdx);
-  //printf("ABOUT TO RETURN CODE\n");
-  //fflush(stdout);
+
 	return code;
 }
 
 int block()
 {
-  //printf("BLOCK\n");
-  //fflush(stdout);
 	int isERROR;
 	level++;
 	int prodecureindex = tIndex - 1;
@@ -131,90 +111,84 @@ int block()
 
 int varDec()
 {
-  //printf("VARDEC\n");
-  //printf("type = %d\n", list[listIndex].type);
-  //printf("assign = %d\n", varsym);
-  //fflush(stdout);
-	int memSize = 3;
+    int memSize = 3;
 	char symbolName[12];
 	int arraySize = 0;
- 
+
 	if (list[listIndex].type == varsym)
-  {
-    do
     {
-      listIndex++;
-      if (list[listIndex].type != identsym)
-      {
-          err = 2;
-          return ERROR_CODE;
-      }
-      if (multipledeclarationcheck(list[listIndex].name) != -1)
-      {
-          err = 3;
-          return ERROR_CODE;
-      }
-
-      strcpy(symbolName, list[listIndex].name);
-      listIndex++;
-      if (list[listIndex].type == lbracketsym)
-      {
-        listIndex++;
-        if (list[listIndex].type != numbersym || list[listIndex].value == 0)
+        do
         {
-            err = 4;
+            listIndex++;
+            if (list[listIndex].type != identsym)
+            {
+                err = 2;
+                return ERROR_CODE;
+            }
+            if (multipledeclarationcheck(list[listIndex].name) != -1)
+            {
+                err = 3;
+                return ERROR_CODE;
+            }
+
+            strcpy(symbolName, list[listIndex].name);
+            listIndex++;
+            if (list[listIndex].type == lbracketsym)
+            {
+                listIndex++;
+                if (list[listIndex].type != numbersym || list[listIndex].value == 0)
+                {
+                    err = 4;
+                    return ERROR_CODE;
+                }
+
+                arraySize = list[listIndex].value;
+                listIndex++;
+                token_type tempy = list[listIndex].type;
+                if (tempy == multsym || tempy == divsym || tempy == modsym || tempy == addsym || tempy == subsym)
+                {
+                    err = 4;
+                    return ERROR_CODE;
+                }
+                else if (tempy != rbracketsym)
+                {
+                    err = 5;
+                    return ERROR_CODE;
+                }
+
+                listIndex++;
+                addToSymbolTable(2, symbolName, arraySize, level, memSize, 0);
+                memSize += arraySize;
+            }
+
+            else
+            {
+                addToSymbolTable(1, symbolName, 0, level, memSize, 0);
+                memSize++;
+            }
+        }
+        while (list[listIndex].type == commasym);
+
+        if (list[listIndex].type == identsym)
+        {
+            err = 6;
             return ERROR_CODE;
         }
-
-        arraySize = list[listIndex].value;
-        listIndex++;
-        token_type tempy = list[listIndex].type;
-        if (tempy == multsym || tempy == divsym || tempy == modsym || tempy == addsym || tempy == subsym)
+        else if (list[listIndex].type != semicolonsym)
         {
-            err = 4;
+            err = 7;
             return ERROR_CODE;
         }
-        else if (tempy != rbracketsym)
-        {
-            err = 5;
-            return ERROR_CODE;
-        }
-
         listIndex++;
-        addToSymbolTable(2, symbolName, arraySize, level, memSize, 0);
-        memSize += arraySize;
-    	}
-
-      else
-      {
-          addToSymbolTable(1, symbolName, 0, level, memSize, 0);
-          memSize++;
-      }
+        return memSize;
     }
-    while (list[listIndex].type == commasym);
 
-    if (list[listIndex].type == identsym)
-    {
-        err = 6;
-        return ERROR_CODE;
-    }
-    else if (list[listIndex].type != semicolonsym)
-    {
-        err = 7;
-        return ERROR_CODE;
-    }
-    listIndex++;
-    return memSize;
-  }
-
-  else
-  	return memSize;
+    else
+        return memSize;
 }
 
 int procDec()
 {
-  //printf("PROCDEC\n");
-  //fflush(stdout);
 	int isERROR;
 	char symbolname[12];
 	while (list[listIndex].type == procsym)
@@ -256,12 +230,7 @@ int procDec()
 
 int statement()
 {
-  //printf("STATEMENT\n");
-  //printf("type = %d\n", list[listIndex].type);
-  //printf("assign = %d\n", assignsym);
-  //fflush(stdout);
-  
-	char symbolname[12];
+    char symbolname[12];
 	int symidx;
 	int arrayidxreg;
 	int varlocreg;
@@ -273,8 +242,6 @@ int statement()
 	// assignment =================================================
 	if (list[listIndex].type == identsym)
 	{
-    //printf("ASSIGNMENT\n");
-    //fflush(stdout);
 		strcpy(symbolname, list[listIndex].name);
 		listIndex++;
 		if (list[listIndex].type == lbracketsym)
@@ -379,8 +346,6 @@ int statement()
 	// call ===========================================================
   if(list[listIndex].type == callsym)
   {
-    //printf("CALL\n");
-    //fflush(stdout);
     listIndex++;
     if (list[listIndex].type != identsym)
     {
@@ -408,8 +373,6 @@ int statement()
 	// begin-end ======================================================
 	if (list[listIndex].type == beginsym)
 	{
-    //printf("BEGINEND\n");
-    //fflush(stdout);
 		do
 		{
 			listIndex++;
@@ -421,9 +384,7 @@ int statement()
 		if (list[listIndex].type != endsym)
 		{
 			token_type tempy = list[listIndex].type;
-      
-      //printf("%s\n", list[listIndex].name);
-      
+
 			if (tempy == identsym || tempy == callsym || tempy == beginsym || tempy == ifsym ||
 				tempy == dosym || tempy == readsym || tempy == writesym)
 			{
@@ -443,8 +404,6 @@ int statement()
 	// if =============================================================
 	if(list[listIndex].type == ifsym)
 	{
-    //printf("IF\n");
-    //fflush(stdout);
 		listIndex++;
 		isERROR = condition();
 		if (isERROR == ERROR_CODE)
@@ -481,8 +440,6 @@ int statement()
 	// do-while =======================================================
 	if(list[listIndex].type == dosym)
 	{
-    //printf("DOWHILE\n");
-    //fflush(stdout);
 		listIndex++;
 		loopidx = codeIdx;
 		isERROR = statement();
@@ -514,8 +471,6 @@ int statement()
 	// read ===========================================================
 	if (list[listIndex].type == readsym)
 	{
-    //printf("READ\n");
-    //fflush(stdout);
 		listIndex++;
 		if (list[listIndex].type != identsym)
 		{
@@ -572,7 +527,7 @@ int statement()
 			emit(1, registercounter, 0, table[symidx].addr); // LIT
 			emit(13, arrayidxreg, arrayidxreg, registercounter); // ADD
 			//registercounter--; [REMOVED]
-      emit(10, registercounter, 0, 0); // RED
+            emit(10, registercounter, 0, 0); // RED
 			emit(4, registercounter, level - table[symidx].level, arrayidxreg); // STO
 			registercounter -= 2;
 		}
@@ -622,8 +577,6 @@ int statement()
 	// write ==========================================================
 	if(list[listIndex].type == writesym)
 	{
-    //printf("WRITE\n");
-    //fflush(stdout);
 		listIndex++;
 		isERROR = expression();
 		if (isERROR == ERROR_CODE)
@@ -631,15 +584,11 @@ int statement()
 		emit(9, registercounter, 0, 0); // WRT
 		registercounter--;
 	}
-  //printf("\tEND OF STATEMENT\n");
-  //fflush(stdout);
-  return 0;
+    return 0;
 }
 
 int condition()
 {
-  //printf("CONDITION\n");
-  //fflush(stdout);
 	int isERROR;
 	isERROR = expression();
 	if (isERROR == ERROR_CODE)
@@ -708,8 +657,6 @@ int condition()
 
 int expression()
 {
-  //printf("EXPRESSION\n");
-  //fflush(stdout);
 	int isERROR;
 	if (list[listIndex].type == subsym)
 	{
@@ -766,20 +713,18 @@ int expression()
 				registercounter--;
 			}
 		}
-   }
-	 if (list[listIndex].type == lparenthesissym || list[listIndex].type == identsym || list[listIndex].type == numbersym)
-  {
-    err = 22;
+    }
+    if (list[listIndex].type == lparenthesissym || list[listIndex].type == identsym || list[listIndex].type == numbersym)
+    {
+        err = 22;
 		return ERROR_CODE;
-  }
+    }
 	return 0;
 }
 
 int term()
 {
-  //printf("TERM\n");
-  //fflush(stdout);
-	int isERROR;
+    int isERROR;
 	isERROR = factor();
 	if (isERROR == ERROR_CODE)
 		return ERROR_CODE;
@@ -813,18 +758,16 @@ int term()
 			registercounter--;
 		}
 	}
-  return 0;
+    return 0;
 }
 
 int factor()
 {
-  //printf("FACTOR\n");
-  //fflush(stdout);
-  int isERROR;
-  int symidx;
-	char symbolname[12];
+    int isERROR;
+    int symidx;
+    char symbolname[12];
 	int arrayidxreg;
-  int varlocreg;
+    int varlocreg;
 	if (list[listIndex].type == identsym)
 	{
 		strcpy(symbolname, list[listIndex].name);
@@ -903,7 +846,7 @@ int factor()
 			varlocreg = registercounter;
 			emit(3, registercounter, level - table[symidx].level, varlocreg); // LOD
 		}
-    return 0;
+        return 0;
 	}
 	else if (list[listIndex].type == numbersym)
 	{
@@ -915,7 +858,7 @@ int factor()
 		}
 		emit(1, registercounter, 0, list[listIndex].value); // LIT
 		listIndex++;
-    return 0;
+        return 0;
 	}
 	else if (list[listIndex].type == lparenthesissym)
 	{
@@ -929,7 +872,7 @@ int factor()
 			return ERROR_CODE;
 		}
 		listIndex++;
-    return 0;
+        return 0;
 	}
 	else
 	{
@@ -940,8 +883,6 @@ int factor()
 
 void emit(int opname, int reg, int level, int mvalue)
 {
-  //printf("LIST INDEX %d\tSYMBOL %s\tVALUE %d\tOPCODE %d\n", listIndex, list[listIndex].name, list[listIndex].value, opname);
-  fflush(stdout);
 	code[codeIdx].opcode = opname;
 	code[codeIdx].r = reg;
 	code[codeIdx].l = level;
